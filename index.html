@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Squish – Image Compressor</title>
+  <meta name="description" content="Compress images instantly in your browser. No upload, no server, 100% private." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0a0a;
+      --surface: #141414;
+      --border: #242424;
+      --accent: #c8ff00;
+      --accent-dim: #9abf00;
+      --text: #f0f0f0;
+      --muted: #666;
+      --danger: #ff4444;
+      --radius: 12px;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Mono', monospace;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ─── noise overlay ─── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ─── layout ─── */
+    .wrap {
+      position: relative;
+      z-index: 1;
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 0 24px 80px;
+    }
+
+    /* ─── header ─── */
+    header {
+      display: flex;
+      align-items: baseline;
+      gap: 16px;
+      padding: 40px 0 60px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 56px;
+    }
+
+    .logo {
+      font-family: 'Syne', sans-serif;
+      font-size: clamp(2rem, 6vw, 3.5rem);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      color: var(--accent);
+      line-height: 1;
+    }
+
+    .tagline {
+      font-size: 0.75rem;
+      color: var(--muted);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding-bottom: 4px;
+    }
+
+    /* ─── drop zone ─── */
+    .drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 64px 32px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .drop-zone:hover, .drop-zone.drag-over {
+      border-color: var(--accent);
+      background: rgba(200,255,0,0.03);
+    }
+
+    .drop-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+
+    .drop-icon {
+      font-size: 3rem;
+      margin-bottom: 16px;
+      display: block;
+      filter: grayscale(1) brightness(0.5);
+      transition: filter 0.2s;
+    }
+
+    .drop-zone:hover .drop-icon, .drop-zone.drag-over .drop-icon {
+      filter: none;
+    }
+
+    .drop-title {
+      font-family: 'Syne', sans-serif;
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .drop-sub {
+      font-size: 0.75rem;
+      color: var(--muted);
+      letter-spacing: 0.05em;
+    }
+
+    /* ─── controls ─── */
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      margin: 32px 0;
+      padding: 20px 24px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      flex-wrap: wrap;
+    }
+
+    .control-label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .quality-wrap { flex: 1; min-width: 200px; }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 2px;
+      background: var(--border);
+      outline: none;
+      border-radius: 2px;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--accent);
+      cursor: pointer;
+      box-shadow: 0 0 0 4px rgba(200,255,0,0.15);
+    }
+
+    .quality-val {
+      font-family: 'Syne', sans-serif;
+      font-size: 1.5rem;
+      font-weight: 800;
+      color: var(--accent);
+      min-width: 48px;
+      text-align: right;
+    }
+
+    .format-wrap { display: flex; gap: 8px; }
+
+    .fmt-btn {
+      padding: 6px 14px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--muted);
+      font-family: 'DM Mono', monospace;
+      font-size: 0.75rem;
+      cursor: pointer;
+      transition: all 0.15s;
+      letter-spacing: 0.05em;
+    }
+
+    .fmt-btn.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #000;
+      font-weight: 500;
+    }
+
+    .btn-compress {
+      padding: 12px 28px;
+      background: var(--accent);
+      border: none;
+      border-radius: 8px;
+      color: #000;
+      font-family: 'Syne', sans-serif;
+      font-size: 0.9rem;
+      font-weight: 700;
+      cursor: pointer;
+      letter-spacing: 0.03em;
+      transition: transform 0.15s, box-shadow 0.15s;
+      white-space: nowrap;
+    }
+
+    .btn-compress:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 20px rgba(200,255,0,0.3);
+    }
+
+    .btn-compress:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    /* ─── results ─── */
+    #results { display: none; }
+
+    .results-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .results-title {
+      font-family: 'Syne', sans-serif;
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+
+    .btn-dl-all {
+      padding: 8px 18px;
+      background: transparent;
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      color: var(--accent);
+      font-family: 'DM Mono', monospace;
+      font-size: 0.75rem;
+      cursor: pointer;
+      transition: all 0.15s;
+      letter-spacing: 0.05em;
+    }
+
+    .btn-dl-all:hover {
+      background: var(--accent);
+      color: #000;
+    }
+
+    .card-list { display: flex; flex-direction: column; gap: 12px; }
+
+    .card {
+      display: grid;
+      grid-template-columns: 72px 1fr auto;
+      gap: 16px;
+      align-items: center;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      animation: slideIn 0.3s ease forwards;
+      opacity: 0;
+    }
+
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .card-thumb {
+      width: 72px;
+      height: 72px;
+      object-fit: cover;
+      border-radius: 6px;
+      background: var(--border);
+    }
+
+    .card-info { overflow: hidden; }
+
+    .card-name {
+      font-size: 0.85rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-bottom: 8px;
+    }
+
+    .card-stats { display: flex; gap: 16px; flex-wrap: wrap; }
+
+    .stat {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .stat-label {
+      font-size: 0.6rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+    }
+
+    .stat-val { font-size: 0.8rem; }
+
+    .stat-val.saved { color: var(--accent); }
+    .stat-val.danger { color: var(--danger); }
+
+    .saving-bar-wrap {
+      margin-top: 10px;
+      height: 3px;
+      background: var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .saving-bar {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 2px;
+      transition: width 0.6s ease;
+    }
+
+    .btn-dl {
+      padding: 8px 16px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-family: 'DM Mono', monospace;
+      font-size: 0.7rem;
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+      letter-spacing: 0.05em;
+    }
+
+    .btn-dl:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    /* ─── footer ─── */
+    .footer-note {
+      margin-top: 48px;
+      padding-top: 24px;
+      border-top: 1px solid var(--border);
+      font-size: 0.7rem;
+      color: var(--muted);
+      letter-spacing: 0.05em;
+      text-align: center;
+    }
+
+    .dot { color: var(--accent); }
+
+    /* ─── spinner ─── */
+    .spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid #000;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    @media (max-width: 560px) {
+      .card { grid-template-columns: 56px 1fr; }
+      .btn-dl { grid-column: 1 / -1; }
+      .controls { flex-direction: column; align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="logo">squish</div>
+    <div class="tagline">browser-side image compression</div>
+  </header>
+
+  <!-- Drop zone -->
+  <div class="drop-zone" id="dropZone">
+    <input type="file" id="fileInput" accept="image/*" multiple />
+    <span class="drop-icon">🗜️</span>
+    <div class="drop-title">Drop images here</div>
+    <div class="drop-sub">or click to browse &nbsp;·&nbsp; JPG, PNG, WEBP &nbsp;·&nbsp; multiple files OK</div>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <div class="quality-wrap">
+      <div class="control-label">Quality</div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <input type="range" id="qualitySlider" min="10" max="100" value="80" />
+        <span class="quality-val" id="qualityVal">80</span>
+      </div>
+    </div>
+
+    <div>
+      <div class="control-label">Output format</div>
+      <div class="format-wrap">
+        <button class="fmt-btn active" data-fmt="image/jpeg">JPEG</button>
+        <button class="fmt-btn" data-fmt="image/webp">WEBP</button>
+        <button class="fmt-btn" data-fmt="image/png">PNG</button>
+      </div>
+    </div>
+
+    <button class="btn-compress" id="compressBtn" disabled>Compress</button>
+  </div>
+
+  <!-- Results -->
+  <div id="results">
+    <div class="results-header">
+      <div class="results-title">Results</div>
+      <button class="btn-dl-all" id="dlAll">↓ Download all</button>
+    </div>
+    <div class="card-list" id="cardList"></div>
+  </div>
+
+  <div class="footer-note">
+    All processing happens in your browser <span class="dot">●</span> No files are uploaded anywhere
+  </div>
+
+</div>
+
+<script>
+  // ── state
+  let files = [];
+  let outputFmt = 'image/jpeg';
+  let results = [];
+
+  // ── elements
+  const dropZone    = document.getElementById('dropZone');
+  const fileInput   = document.getElementById('fileInput');
+  const qualitySlider = document.getElementById('qualitySlider');
+  const qualityVal  = document.getElementById('qualityVal');
+  const compressBtn = document.getElementById('compressBtn');
+  const resultsEl   = document.getElementById('results');
+  const cardList    = document.getElementById('cardList');
+  const dlAll       = document.getElementById('dlAll');
+
+  // ── quality slider
+  qualitySlider.addEventListener('input', () => {
+    qualityVal.textContent = qualitySlider.value;
+  });
+
+  // ── format buttons
+  document.querySelectorAll('.fmt-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.fmt-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      outputFmt = btn.dataset.fmt;
+    });
+  });
+
+  // ── file input
+  fileInput.addEventListener('change', () => handleFiles(fileInput.files));
+
+  // ── drag & drop
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    handleFiles(e.dataTransfer.files);
+  });
+
+  function handleFiles(fileList) {
+    files = Array.from(fileList).filter(f => f.type.startsWith('image/'));
+    if (files.length === 0) return;
+    compressBtn.disabled = false;
+    dropZone.querySelector('.drop-title').textContent =
+      files.length === 1 ? files[0].name : `${files.length} images selected`;
+  }
+
+  // ── compress
+  compressBtn.addEventListener('click', async () => {
+    if (!files.length) return;
+
+    compressBtn.disabled = true;
+    compressBtn.innerHTML = '<span class="spinner"></span>Compressing…';
+    resultsEl.style.display = 'none';
+    cardList.innerHTML = '';
+    results = [];
+
+    const quality = parseInt(qualitySlider.value) / 100;
+
+    for (const file of files) {
+      const result = await compressImage(file, quality, outputFmt);
+      results.push(result);
+      renderCard(result);
+    }
+
+    resultsEl.style.display = 'block';
+    compressBtn.disabled = false;
+    compressBtn.textContent = 'Compress';
+  });
+
+  // ── core compression logic
+  function compressImage(file, quality, format) {
+    return new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onload = e => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width  = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+
+          canvas.toBlob(blob => {
+            const ext = format === 'image/jpeg' ? 'jpg'
+                      : format === 'image/webp' ? 'webp' : 'png';
+            const outName = file.name.replace(/\.[^.]+$/, '') + '_compressed.' + ext;
+            resolve({
+              originalName : file.name,
+              outputName   : outName,
+              originalSize : file.size,
+              compressedSize: blob.size,
+              blob,
+              previewUrl   : URL.createObjectURL(blob),
+              format,
+            });
+          }, format, quality);
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // ── render one card
+  function renderCard(r) {
+    const saved   = r.originalSize - r.compressedSize;
+    const pct     = ((saved / r.originalSize) * 100).toFixed(1);
+    const isSmaller = saved > 0;
+
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.style.animationDelay = (results.indexOf(r) * 60) + 'ms';
+
+    card.innerHTML = `
+      <img class="card-thumb" src="${r.previewUrl}" alt="${r.originalName}" />
+      <div class="card-info">
+        <div class="card-name">${r.originalName}</div>
+        <div class="card-stats">
+          <div class="stat">
+            <span class="stat-label">Original</span>
+            <span class="stat-val">${fmtSize(r.originalSize)}</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Compressed</span>
+            <span class="stat-val">${fmtSize(r.compressedSize)}</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Saved</span>
+            <span class="stat-val ${isSmaller ? 'saved' : 'danger'}">
+              ${isSmaller ? '↓ ' + pct + '%' : '↑ larger'}
+            </span>
+          </div>
+        </div>
+        <div class="saving-bar-wrap">
+          <div class="saving-bar" style="width:${isSmaller ? pct : 0}%"></div>
+        </div>
+      </div>
+      <button class="btn-dl">↓ Save</button>
+    `;
+
+    card.querySelector('.btn-dl').addEventListener('click', () => download(r));
+    cardList.appendChild(card);
+  }
+
+  // ── download helpers
+  function download(r) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(r.blob);
+    a.download = r.outputName;
+    a.click();
+  }
+
+  dlAll.addEventListener('click', () => results.forEach(download));
+
+  // ── format file size
+  function fmtSize(bytes) {
+    if (bytes < 1024)       return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+  }
+</script>
+</body>
+</html>
